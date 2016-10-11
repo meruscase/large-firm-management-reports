@@ -20,7 +20,7 @@ function comma($str){
 $api_version = 'api-canary';
 $csv = '';
 
-$recData = curl_get('https://',$api_version.'.meruscase.com/receivables/index?date_posted[gte]=1970-01-01&date_posted[lte]=1970-12-31');
+$recData = curl_get('https://'.$api_version.'.meruscase.com/receivables/index?date_posted[gte]=1970-01-01&date_posted[lte]=1970-12-31');
 
 $payments = $recData['data']['data'];
 
