@@ -17,10 +17,19 @@ function unique_array($array, $key) {
     return $temp_array;
 }
 
+$offices = cmd_curl($meruscase_api.'/firmOffices/','');
+$users = cmd_curl($meruscase_api.'/users/index/','');
+$userArr = array();
+foreach ( $users['data'] as $user ){
+    $userArr[$user['id']] = array('name'=>$user[1].' '.$user[2], 'office'=>$offices['data'][$user['firm_office_id']]['description'], 'total'=>'0');
+}
+
 
 $invData = cmd_curl($meruscase_api . '/invoices/view/1599955', '');
 $ledgers = $invData['CaseLedger'];
 $users = unique_array($ledgers, 'user_id');
+$invoice_total = $invData['Invoice']['amount'];
+$write_off = '1190.00';
 
 foreach ( $users as $user ){
 
@@ -33,8 +42,16 @@ foreach ( $users as $user ){
         }
     }
 
-    echo $user_id . '  |  ' . $user_total . '<br/><br/>';
+    $user_total = abs($user_total);
+
+    $user_percentage = $user_total / $invoice_total;
+    $user_percentage = round($user_percentage, 2);
+
+    $user_allocation = round(($write_off * $user_percentage), 2);
+
+    $user_current_total = $userArr[$user_id]['total'];
+
+    $userArr[$user_id]['total'] = $user_current_total + $user_allocation;
 
 }
-
-echo '<b>INV TOTAL:' . $invData['Invoice']['amount'] . '</b>';
+echo json_encode($userArr, true);
