@@ -24,34 +24,71 @@ foreach ( $users['data'] as $user ){
     $userArr[$user['id']] = array('name'=>$user[1].' '.$user[2], 'office'=>$offices['data'][$user['firm_office_id']]['description'], 'total'=>'0');
 }
 
+$woI = 0;
+$woData = cmd_curl($meruscase_api.'/caseLedgersOpen/index?date[gte]=2016-10-01&date[lte]=2016-10-31&ledger_type_id[]=112&ledger_type_id[]=111&invoice_id[gt]=0','');
+foreach ( $woData['data']['data'] as $writeoff ){
 
-$invData = cmd_curl($meruscase_api . '/invoices/view/1599955', '');
-$ledgers = $invData['CaseLedger'];
-$users = unique_array($ledgers, 'user_id');
-$invoice_total = $invData['Invoice']['amount'];
-$write_off = '1190.00';
+    $woI++;
+    if ( $woI < 5 ){
 
-foreach ( $users as $user ){
+        $invData = cmd_curl($meruscase_api . '/invoices/view/'.$writeoff['invoice_id'], '');
+        $ledgers = $invData['CaseLedger'];
+        $users = unique_array($ledgers, 'user_id');
+        $invoice_total = $invData['Invoice']['amount'];
+        $write_off = $writeoff['amount'];
 
-    $user_id = $user['user_id'];
-    $user_total = 0;
+        $numItems = count($users);
+        $i = 0;
+        $overall_total = 0;
 
-    foreach ( $ledgers as $ledger ){
-        if ( $ledger['user_id'] == $user_id ){
-            $user_total = $user_total + $ledger['amount'];
+        foreach ( $users as $user ){
+
+            $user_id = $user['user_id'];
+            $user_total = 0;
+
+            foreach ( $ledgers as $ledger ){
+                if ( $ledger['user_id'] == $user_id ){
+                    $user_total = $user_total + $ledger['amount'];
+                }
+            }
+
+            $user_total = abs($user_total);
+
+            $user_percentage = $user_total / $invoice_total;
+            $user_percentage = round($user_percentage, 2);
+
+            $user_allocation = round(($write_off * $user_percentage), 2);
+
+            $overall_total = $overall_total + $user_allocation;
+
+            $user_current_total = $userArr[$user_id]['total'];
+
+            if ( ++$i === $numItems ) {
+                if ($overall_total > $write_off) {
+                    $difference = $overall_total - $write_off;
+                    $user_current_total = $user_current_total - round($difference, 2);
+                }
+                elseif ( $overall_total < $write_off){
+                    $difference = $write_off - $overall_total;
+                    $user_current_total = $user_current_total + round($difference, 2);
+                }
+            }
+
+            $userArr[$user_id]['total'] = $user_current_total + $user_allocation;
+
         }
+
     }
 
-    $user_total = abs($user_total);
-
-    $user_percentage = $user_total / $invoice_total;
-    $user_percentage = round($user_percentage, 2);
-
-    $user_allocation = round(($write_off * $user_percentage), 2);
-
-    $user_current_total = $userArr[$user_id]['total'];
-
-    $userArr[$user_id]['total'] = $user_current_total + $user_allocation;
-
 }
-echo json_encode($userArr, true);
+
+echo '<table border="1">';
+foreach ($userArr as $user ){
+    if ( $user['total'] > 0 ){
+        echo '<tr>';
+        echo '<td>'.$user['name'].'</td>';
+        echo '<td>'.$user['total'].'</td>';
+        echo '<tr>';
+    }
+}
+echo '</table>';
