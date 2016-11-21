@@ -116,7 +116,7 @@ foreach ( $woData['data']['data'] as $writeoff ){
     } elseif ($overall_total < $write_off) { //If not enough is allocated; add it to the total
         $difference = $write_off - $overall_total;
         $user_current_total = $userArr[$user_id]['total']  + round($difference, 2);
-        $userArr[$user_id]['total'] = $user_current_total + $user_allocation;
+        $userArr[$user_id]['total'] = $user_current_total;// + $user_allocation;
         $overall_total = $overall_total + round($difference, 2);
     }
 
