@@ -1,4 +1,6 @@
 <?php
+set_time_limit(0);                   // ignore php timeout
+
 include_once '../includes/config.php';
 include_once '../includes/functions.php';
 
@@ -17,71 +19,112 @@ function unique_array($array, $key) {
     return $temp_array;
 }
 
+/*
+ * Retrieve firm branch offices to include the office association of each user
+ */
 $offices = cmd_curl($meruscase_api.'/firmOffices/','');
+
+/*
+ * Retrieve firm users listing to get name of timekeepers
+ */
 $users = cmd_curl($meruscase_api.'/users/index/','');
+
+/*
+ * Build An Array containing User's Name, Office and Total write off amount.
+ * The total write-off amount will be updated as we loop through ledgers
+ */
 $userArr = array();
 foreach ( $users['data'] as $user ){
-    $userArr[$user['id']] = array('name'=>$user[1].' '.$user[2], 'office'=>$offices['data'][$user['firm_office_id']]['description'], 'total'=>'0');
+    $userArr[$user['id']] = array('id'=>$user['id'], 'name'=>$user[1].' '.$user[2], 'office'=>$offices['data'][$user['firm_office_id']]['description'], 'total'=>'0');
 }
 
+/*
+ * Retreive all write-off ledgers in a given time frame, then loop through them
+ */
 $woI = 0;
 $woData = cmd_curl($meruscase_api.'/caseLedgersOpen/index?date[gte]=2016-10-01&date[lte]=2016-10-31&ledger_type_id[]=112&ledger_type_id[]=111&invoice_id[gt]=0','');
 foreach ( $woData['data']['data'] as $writeoff ){
 
     $woI++;
-    if ( $woI < 5 ){
 
-        $invData = cmd_curl($meruscase_api . '/invoices/view/'.$writeoff['invoice_id'], '');
-        $ledgers = $invData['CaseLedger'];
-        $users = unique_array($ledgers, 'user_id');
-        $invoice_total = $invData['Invoice']['amount'];
-        $write_off = $writeoff['amount'];
+    /*
+     * Retrieve invoice details for each write-off
+     */
+    $invData = cmd_curl($meruscase_api . '/invoices/view/'.$writeoff['invoice_id'], '');
+    $ledgers = $invData['CaseLedger'];
+    $users = unique_array($ledgers, 'user_id'); //Filter ledger array down to unique users
+    $invoice_total = $invData['Invoice']['amount']; //Invoice total amount
+    $write_off = $writeoff['amount']; //Amount of the write-off
 
-        $numItems = count($users);
-        $i = 0;
-        $overall_total = 0;
+    $numItems = count($users);
+    $i = 0;
+    $overall_total = 0;
 
-        foreach ( $users as $user ){
+    /*
+     * COSTS
+     * Loop through the ledgers looking for cost to get a total amount for costs.
+     */
+    $costs_total = 0;
+    foreach ( $ledgers as $cost_search ){
+        if ( $cost_search['user_id'] == '140934' || $cost_search['user_id'] == '433244' ){
+            $cost_total = $cost_total + $cost_search['amount'];
+        }
+    }
 
+    $cost_total = round(abs($cost_total),2);
+    /*
+     * Costs are never written off.  Therefore we remove the total cost amount from the invoice total. That
+     * new invoice_total is used to calculate the allocation amounts.
+     */
+    $invoice_total = $invoice_total - $cost_total;
+
+    /*
+     * Loop through the unique user list, then through the ledgers adding up the ledgers for each user.
+     */
+    foreach ( $users as $user ){
+
+        if ( ($user['user_id'] != '140934') && ($user['user_id'] != '433244') ) { //exclude costs; we've already handled those.
             $user_id = $user['user_id'];
             $user_total = 0;
 
-            foreach ( $ledgers as $ledger ){
-                if ( $ledger['user_id'] == $user_id ){
+            foreach ($ledgers as $ledger) {
+                if ($ledger['user_id'] == $user_id) {
                     $user_total = $user_total + $ledger['amount'];
                 }
             }
 
-            $user_total = abs($user_total);
-
-            $user_percentage = $user_total / $invoice_total;
-            $user_percentage = round($user_percentage, 2);
-
-            $user_allocation = round(($write_off * $user_percentage), 2);
-
-            $overall_total = $overall_total + $user_allocation;
-
-            $user_current_total = $userArr[$user_id]['total'];
-
-            if ( ++$i === $numItems ) {
-                if ($overall_total > $write_off) {
-                    $difference = $overall_total - $write_off;
-                    $user_current_total = $user_current_total - round($difference, 2);
-                }
-                elseif ( $overall_total < $write_off){
-                    $difference = $write_off - $overall_total;
-                    $user_current_total = $user_current_total + round($difference, 2);
-                }
-            }
-
-            $userArr[$user_id]['total'] = $user_current_total + $user_allocation;
-
+            $user_total = abs($user_total); //total dollar amount owned by each user on this invoice.
+            $user_percentage = $user_total / $invoice_total; //percentage of invoice total which the user owns.
+            $user_percentage = round($user_percentage, 2); //round that percentage amount
+            $user_allocation = round(($write_off * $user_percentage), 2); //calculate the percentage of write-off for the user based on their owned percentage
+            $overall_total = $overall_total + $user_allocation; //running total for testing and balancing purposes
+            $user_current_total = $userArr[$user_id]['total']; //Get the users current total from the main users array we built earlier
+            $userArr[$user_id]['total'] = $user_current_total + $user_allocation; //add the users previous total to the new allocation total, then push it to the main array
         }
+    }
 
+    /*
+     * Handle the differences
+     * Take the overal total that has been allocated and check it against the true write-off amount.  If their is a difference
+     * take the difference and add/remove it from the last user in the loop total.
+     */
+    if ($overall_total > $write_off) { //If too much is allocated; subtract it from the total
+        $difference = $overall_total - $write_off;
+        $user_current_total = $userArr[$user_id]['total']  - round($difference, 2);
+        $userArr[$user_id]['total'] = $user_current_total;// + $user_allocation;
+        $overall_total = $overall_total - round($difference, 2);
+    } elseif ($overall_total < $write_off) { //If not enough is allocated; add it to the total
+        $difference = $write_off - $overall_total;
+        $user_current_total = $userArr[$user_id]['total']  + round($difference, 2);
+        $userArr[$user_id]['total'] = $user_current_total + $user_allocation;
+        $overall_total = $overall_total + round($difference, 2);
     }
 
 }
 
+/*
+ * Display the results; only for users that have an amount written off.
+ */
 echo '<table border="1">';
 foreach ($userArr as $user ){
     if ( $user['total'] > 0 ){
