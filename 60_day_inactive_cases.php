@@ -86,6 +86,10 @@ function status_name($str)
     }
 }
 
+function remove_comma($str){
+    return str_replace(',','', $str);
+}
+
 
 //CSV HEADING
 $csv = "case_number,case_name,status,last_ledger_date,days_inactive\n";
