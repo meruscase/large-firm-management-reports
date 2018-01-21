@@ -3,12 +3,6 @@
 if (php_sapi_name() === 'cli') {
     parse_str(implode('&', array_slice($argv, 1)), $_POST);
 }
-echo(print_r($_POST)."\n\n");
-echo(print_r($_REQUEST)."\n\n");
-
-
-//if (isset($_SERVER["_POST"]))
-//    $_POST = parse_url($_SERVER["_POST"]);
 
 if (!empty($_POST)) {
     $GLOBALS['api-version'] = 'api';
@@ -161,7 +155,7 @@ if (!empty($_POST)) {
     echo $csv;
 } else { ?>
 
-    <h1>Cases Last Billed Custom report</h1>
+    <h1>Cases Last Billed Custom Report</h1>
     <form method="post">
         Username:<br>
         <input type="text" name="username" placeholder="user@meruscase.com">
