@@ -171,5 +171,4 @@ if (!empty($_POST)) {
         <br><br>
         <input type="submit" value="Submit">
     </form>
-
 <?php }
